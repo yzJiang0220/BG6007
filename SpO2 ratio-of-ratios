@@ -1,15 +1,4 @@
-# This script is a direct adaptation of the code from the official repository:
-# https://github.com/ubicomplab/oximetry-phone-cam-data
-#
-# The goal is to preserve the original structure as much as possible, with minimal changes
-# to allow processing of a new video file instead of the provided .mat dataset.
-#
-# Main Modifications:
-# 1. The PPG_Data.__init__ method is modified to accept a video file path and extract
-#    signals using OpenCV.
-# 2. A separate SpO2Estimator class has been added to implement the classical
-#    "ratio-of-ratios" algorithm, since the original deep learning model is not available.
-#
+
 
 import numpy as np
 import matplotlib.pyplot as plt
