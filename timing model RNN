@@ -123,7 +123,7 @@ def main(a):
     # After standardization, columns are lowercase, so look for 'spo21'/'spo22'
     target_names = [c for c in df.columns if c in ('spo21', 'spo22')]
     if not target_names:
-        raise SystemExit("未找到目标列 SPO21 / SPO22（不区分大小写）。请确认 CSV 的列名。")
+        raise SystemExit("can not fine SPO21 / SPO22. please check CSV line.")
     target_df = df[target_names].apply(pd.to_numeric, errors='coerce')
     y_series = target_df.mean(axis=1).ffill().bfill()
 
@@ -147,20 +147,28 @@ def main(a):
     else:
         feat_cols = available_pref
 
-    # 4) Numeric coercion & imputation
+       # 4) Numeric coercion & imputation (NaN-safe version)
     X_df = df[feat_cols].apply(pd.to_numeric, errors='coerce')
+
+    # Drop columns that are completely empty (all NaN)
+    X_df.dropna(axis=1, how='all', inplace=True)
+    print(f"[INFO] Columns remaining after dropping empty ones: {len(X_df.columns)}")
+
+    # Update the feature list to reflect any dropped columns
+    feat_cols = X_df.columns.tolist()
+
+    # Impute remaining NaNs using a forward and backward fill
     X_df = X_df.ffill().bfill()
     y_series = y_series.ffill().bfill()
 
-    # sanity check
-    if X_df.isna().any().any() or np.isnan(y_series.values).any():
-        print("[WARN] Residual NaN found; replacing with column medians.")
+    # Final sanity check to fill any remaining NaNs with the column median
+    if X_df.isna().any().any():
+        print("[WARN] Residual NaN found after ffill/bfill; replacing with column medians.")
         for c in X_df.columns:
-            col = X_df[c]
-            if col.isna().any():
-                X_df[c] = col.fillna(col.median())
-        if y_series.isna().any():
-            y_series = y_series.fillna(y_series.median())
+            if X_df[c].isna().any():
+                X_df[c] = X_df[c].fillna(X_df[c].median())
+    if y_series.isna().any():
+        y_series = y_series.fillna(y_series.median())
 
     X_all = X_df.to_numpy(dtype=float)
     y_all = y_series.to_numpy(dtype=float)
@@ -212,7 +220,7 @@ def main(a):
     use_train_as_val = (len(Xva_seq) == 0)
     if use_train_as_val:
         Xva_seq, yva = Xtr_seq, ytr
-        print("[WARN] 验证集为空，临时使用训练集进行验证与早停。")
+        print("[WARN] blank，use the training set for verification and early shutdown.")
 
     # 11) Training loop (ALWAYS save at epoch 1; then on improvement)
     for epoch in range(a.epochs):
@@ -265,14 +273,15 @@ def main(a):
         np.save(os.path.join(a.outdir, "sigma.npy"), sigma)
         with open(os.path.join(a.outdir, "meta.json"), "w", encoding="utf-8") as f:
             json.dump({"features": feat_cols, "lookback": lb, "targets": target_names}, f, indent=2, ensure_ascii=False)
-        print("[WARN] 训练期间未触发保存，已保存最后一轮模型到 lstm_best.pt。")
+        print("[WARN] save to lstm_best.pt。")
 
     # 12) Load checkpoint for evaluation (if missing, use in-memory model)
     try:
         model.load_state_dict(torch.load(ckpt_path, map_location=device))
         print(f"[INFO] Loaded checkpoint for evaluation -> {ckpt_path}")
     except FileNotFoundError:
-        print(f"[WARN] 未找到 {ckpt_path}，改用当前内存模型评估。")
+        print(f"[WARN] cannot find {ckpt_path}，turn to current memory for evaluation")
+
 
     # 13) Evaluate on test
     model.eval()
@@ -283,7 +292,7 @@ def main(a):
     y_true = yte.reshape(-1)
     if len(y_true) == 0:
         mae = rmse = r2 = float("nan")
-        print("[WARN] 测试集为空，指标以 NaN 记。")
+        print("[WARN] cannot fine training dataset，noted as NaN.")
     else:
         mae = float(np.mean(np.abs(y_pred - y_true)))
         rmse = float(np.sqrt(np.mean((y_pred - y_true) ** 2)))
@@ -297,7 +306,7 @@ def main(a):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    # Default file names; change if yours不同
+    # Default file names; change if yours different
     p.add_argument("--f1", default="100001.csv")
     p.add_argument("--f2", default="100002.csv")
     p.add_argument("--f3", default="100003.csv")
